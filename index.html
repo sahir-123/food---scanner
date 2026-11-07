@@ -63,7 +63,53 @@
       const shown = value === undefined ? "n/a" : value.toFixed(1) + " g";
       return `<p>${name}: <b>${shown}</b> <span style="color:${l.color}">● ${l.label}</span></p>`;
     }
+    function verdict(n, nova) {
+  const sugar = n.sugars_100g, sat = n["saturated-fat_100g"], salt = n.salt_100g;
+  const reasons = [];
+  let score = 0;
 
+  if (sugar >= 22.5) { score += 2; reasons.push("Very high sugar"); }
+  else if (sugar > 5) { score += 1; reasons.push("Moderate sugar"); }
+
+  if (sat >= 5) { score += 2; reasons.push("Very high saturated fat"); }
+  else if (sat > 1.5) { score += 1; reasons.push("Moderate saturated fat"); }
+
+  if (salt >= 1.5) { score += 2; reasons.push("Very high salt"); }
+  else if (salt > 0.3) { score += 1; reasons.push("Moderate salt"); }
+
+  if (nova == 4) { score += 2; reasons.push("Ultra-processed"); }
+
+  const missing = [sugar, sat, salt].some(v => v === undefined);
+  let label, color;
+  if (score >= 4) { label = "Limit this"; color = "red"; }
+  else if (score >= 2) { label = "Okay occasionally"; color = "orange"; }
+  else { label = "Looks fine"; color = "green"; }
+
+  return `<div style="border:2px solid ${color}; padding:8px; margin:8px 0">
+    <b style="color:${color}; font-size:1.2em">${label}</b>
+    <ul>${reasons.map(r => `<li>${r}</li>`).join("")}</ul>
+    ${missing ? "<small>Some nutrition data is missing, so this may be incomplete.</small>" : ""}
+  </div>`;
+}
+const FLAGS = [
+  { re: /palm( kernel)? oil|palmolein/i, text: "Palm oil (high in saturated fat)" },
+  { re: /hydrogenated|vanaspati|margarine/i, text: "Hydrogenated fat (may contain trans fat)" },
+  { re: /artificial flavour/i, text: "Artificial flavours" },
+  { re: /nature[- ]identical/i, text: "Nature-identical flavours (lab-made)" },
+  { re: /aspartame|acesulfame|sucralose|saccharin|sweetener/i, text: "Artificial sweetener" },
+  { re: /\b(?:e|ins)\s?-?1\d{2}[a-z]?\b|colour|color|tartrazine|sunset yellow/i, text: "Added colour" },
+  { re: /\b(?:e|ins)\s?-?62\d\b|monosodium glutamate|\bmsg\b|flavour enhancer/i, text: "Flavour enhancer (MSG)" },
+  { re: /glucose syrup|fructose syrup|invert sugar|corn syrup|maltodextrin|dextrose/i, text: "Sugar in other forms" },
+  { re: /\b(?:e|ins)\s?-?2\d{2}[a-z]?\b|preservative|sodium benzoate|potassium sorbate/i, text: "Preservative" },
+  { re: /maida|refined wheat flour|refined flour/i, text: "Refined flour (maida)" }
+];
+
+function flagsHtml(text) {
+  if (!text) return "";
+  const found = FLAGS.filter(f => f.re.test(text)).map(f => f.text);
+  if (found.length === 0) return "<p>✅ No flagged ingredients found.</p>";
+  return `<h4>Worth knowing</h4><ul>${found.map(f => `<li>${f}</li>`).join("")}</ul>`;
+}
     async function lookup(code) {
       const out = document.getElementById("result");
       if (!code) { out.textContent = "Enter or scan a barcode."; return; }
@@ -81,6 +127,8 @@
           ? p.nutriscore_grade.toUpperCase() : "Not enough data";
         out.innerHTML = `
           <h3>${p.product_name || "Unknown"}</h3>
+          ${verdict(n, p.nova_group)}
+          ${flagsHtml(p.ingredients_text)}
           <p><b>Nutri-Score:</b> ${ns}
              | <b>NOVA:</b> ${p.nova_group || "n/a"} (4 = ultra-processed)</p>
           <h4>Per 100 g</h4>
