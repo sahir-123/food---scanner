@@ -110,6 +110,26 @@ function flagsHtml(text) {
   if (found.length === 0) return "<p>✅ No flagged ingredients found.</p>";
   return `<h4>Worth knowing</h4><ul>${found.map(f => `<li>${f}</li>`).join("")}</ul>`;
 }
+function manualForm() {
+  return `<h3>Product not found</h3>
+  <p>Enter what's on the label (per 100 g). Leave blank if unknown.</p>
+  <input id="m_sugar" type="number" step="0.1" placeholder="Sugar (g)"><br>
+  <input id="m_sat" type="number" step="0.1" placeholder="Saturated fat (g)"><br>
+  <input id="m_salt" type="number" step="0.01" placeholder="Salt (g)"><br>
+  <textarea id="m_ing" rows="4" style="width:100%" placeholder="Paste or type the ingredients"></textarea><br>
+  <button onclick="manualCheck()">Analyze</button>
+  <div id="m_out"></div>`;
+}
+
+function manualCheck() {
+  const num = id => {
+    const v = parseFloat(document.getElementById(id).value);
+    return isNaN(v) ? undefined : v;
+  };
+  const n = { sugars_100g: num("m_sugar"), "saturated-fat_100g": num("m_sat"), salt_100g: num("m_salt") };
+  const ing = document.getElementById("m_ing").value;
+  document.getElementById("m_out").innerHTML = verdict(n, undefined) + flagsHtml(ing);
+}
     async function lookup(code) {
       const out = document.getElementById("result");
       if (!code) { out.textContent = "Enter or scan a barcode."; return; }
@@ -118,7 +138,7 @@ function flagsHtml(text) {
         const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${code}.json`);
         const data = await res.json();
         if (data.status !== 1) {
-          out.textContent = "Product not found.";
+          out.innerHTML = manualForm();
           return;
         }
         const p = data.product;
