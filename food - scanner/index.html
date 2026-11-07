@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Food Scanner</title>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+</head>
+<body>
+  <h2>Food Scanner</h2>
+  <button onclick="startScan()">📷 Scan barcode</button>
+  <button onclick="stopScan()">Stop</button>
+  <div id="reader" style="width:300px"></div>
+  <br>
+  <input id="barcode" placeholder="Or type barcode">
+  <button onclick="lookup(document.getElementById('barcode').value.trim())">Check</button>
+  <div id="result"></div>
+
+  <script>
+    let scanner = null;
+
+    async function startScan() {
+      if (!scanner) scanner = new Html5Qrcode("reader");
+      try {
+        await scanner.start(
+          { facingMode: "environment" },
+          {
+            fps: 10,
+            qrbox: { width: 250, height: 150 },
+            formatsToSupport: [
+              Html5QrcodeSupportedFormats.EAN_13,
+              Html5QrcodeSupportedFormats.EAN_8,
+              Html5QrcodeSupportedFormats.UPC_A,
+              Html5QrcodeSupportedFormats.UPC_E
+            ]
+          },
+          async (code) => {
+            await stopScan();
+            document.getElementById("barcode").value = code;
+            lookup(code);
+          }
+        );
+      } catch (e) {
+        document.getElementById("result").textContent = "Camera error: " + e;
+      }
+    }
+
+    async function stopScan() {
+      if (scanner && scanner.isScanning) {
+        await scanner.stop();
+      }
+    }
+
+    function level(value, low, high) {
+      if (value === undefined || value === null) return { label: "n/a", color: "gray" };
+      if (value <= low) return { label: "Low", color: "green" };
+      if (value >= high) return { label: "High", color: "red" };
+      return { label: "Medium", color: "orange" };
+    }
+
+    function row(name, value, low, high) {
+      const l = level(value, low, high);
+      const shown = value === undefined ? "n/a" : value.toFixed(1) + " g";
+      return `<p>${name}: <b>${shown}</b> <span style="color:${l.color}">● ${l.label}</span></p>`;
+    }
+
+    async function lookup(code) {
+      const out = document.getElementById("result");
+      if (!code) { out.textContent = "Enter or scan a barcode."; return; }
+      out.textContent = "Loading...";
+      try {
+        const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${code}.json`);
+        const data = await res.json();
+        if (data.status !== 1) {
+          out.textContent = "Product not found.";
+          return;
+        }
+        const p = data.product;
+        const n = p.nutriments || {};
+        const ns = p.nutriscore_grade && p.nutriscore_grade !== "unknown"
+          ? p.nutriscore_grade.toUpperCase() : "Not enough data";
+        out.innerHTML = `
+          <h3>${p.product_name || "Unknown"}</h3>
+          <p><b>Nutri-Score:</b> ${ns}
+             | <b>NOVA:</b> ${p.nova_group || "n/a"} (4 = ultra-processed)</p>
+          <h4>Per 100 g</h4>
+          ${row("Sugar", n.sugars_100g, 5, 22.5)}
+          ${row("Saturated fat", n["saturated-fat_100g"], 1.5, 5)}
+          ${row("Salt", n.salt_100g, 0.3, 1.5)}
+          <p><b>Ingredients:</b> ${p.ingredients_text || "Not available"}</p>
+        `;
+      } catch (e) {
+        out.textContent = "Something went wrong.";
+      }
+    }
+  </script>
+</body>
+</html>
