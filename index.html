@@ -5,10 +5,24 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Food Scanner</title>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <style>
+  body { font-family: system-ui, -apple-system, Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 16px; background: #f5f7f5; color: #222; line-height: 1.4; }
+  h2 { text-align: center; margin: 8px 0 16px; }
+  button { padding: 12px 16px; font-size: 16px; border: 0; border-radius: 10px; background: #e3e8e3; cursor: pointer; }
+  button.primary { background: #2e7d32; color: #fff; font-weight: 600; width: 100%; margin-bottom: 8px; }
+  input, textarea { width: 100%; box-sizing: border-box; padding: 12px; font-size: 16px; border: 1px solid #ccd; border-radius: 10px; margin: 4px 0; }
+  #reader { width: 100% !important; max-width: 340px; margin: 8px auto; }
+  #result { background: #fff; border-radius: 14px; padding: 12px 16px; margin-top: 16px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+  #result:empty { display: none; }
+  h3 { margin: 4px 0 8px; font-size: 22px; }
+  h4 { margin: 14px 0 4px; }
+  ul { margin: 6px 0; padding-left: 20px; }
+  p { margin: 6px 0; }
+</style>
 </head>
 <body>
   <h2>Food Scanner</h2>
-  <button onclick="startScan()">📷 Scan barcode</button>
+  <button class="primary" onclick="startScan()">📷 Scan barcode</button>
   <button onclick="stopScan()">Stop</button>
   <div id="reader" style="width:300px"></div>
   <br>
@@ -63,7 +77,7 @@
       const shown = value === undefined ? "n/a" : value.toFixed(1) + " g";
       return `<p>${name}: <b>${shown}</b> <span style="color:${l.color}">● ${l.label}</span></p>`;
     }
-    function verdict(n, nova) {
+    function verdict(n, nova, ing) {
   const sugar = n.sugars_100g, sat = n["saturated-fat_100g"], salt = n.salt_100g;
   const reasons = [];
   let score = 0;
@@ -78,6 +92,11 @@
   else if (salt > 0.3) { score += 1; reasons.push("Moderate salt"); }
 
   if (nova == 4) { score += 2; reasons.push("Ultra-processed"); }
+    const iScore = ingScore(ing);
+  if (iScore > 0) {
+    score += iScore;
+    reasons.push(iScore >= 2 ? "Several concerning ingredients" : "A concerning ingredient (see below)");
+  }
 
   const missing = [sugar, sat, salt].some(v => v === undefined);
   let label, color;
@@ -92,17 +111,23 @@
   </div>`;
 }
 const FLAGS = [
-  { re: /palm( kernel)? oil|palmolein/i, text: "Palm oil (high in saturated fat)" },
-  { re: /hydrogenated|vanaspati|margarine/i, text: "Hydrogenated fat (may contain trans fat)" },
-  { re: /artificial flavour/i, text: "Artificial flavours" },
-  { re: /nature[- ]identical/i, text: "Nature-identical flavours (lab-made)" },
-  { re: /aspartame|acesulfame|sucralose|saccharin|sweetener/i, text: "Artificial sweetener" },
-  { re: /\b(?:e|ins)\s?-?1\d{2}[a-z]?\b|colour|color|tartrazine|sunset yellow/i, text: "Added colour" },
-  { re: /\b(?:e|ins)\s?-?62\d\b|monosodium glutamate|\bmsg\b|flavour enhancer/i, text: "Flavour enhancer (MSG)" },
-  { re: /glucose syrup|fructose syrup|invert sugar|corn syrup|maltodextrin|dextrose/i, text: "Sugar in other forms" },
-  { re: /\b(?:e|ins)\s?-?2\d{2}[a-z]?\b|preservative|sodium benzoate|potassium sorbate/i, text: "Preservative" },
-  { re: /maida|refined wheat flour|refined flour/i, text: "Refined flour (maida)" }
+  { w: 1, re: /palm( kernel)? oil|palmolein/i, text: "Palm oil (high in saturated fat)" },
+  { w: 2, re: /hydrogenated|vanaspati|margarine/i, text: "Hydrogenated fat (may contain trans fat)" },
+  { w: 1, re: /artificial flavour/i, text: "Artificial flavours" },
+  { w: 0, re: /nature[- ]identical/i, text: "Nature-identical flavours (lab-made)" },
+  { w: 1, re: /aspartame|acesulfame|sucralose|saccharin|sweetener/i, text: "Artificial sweetener" },
+  { w: 1, re: /\b(?:e|ins)\s?-?1\d{2}[a-z]?\b|colour|color|tartrazine|sunset yellow/i, text: "Added colour" },
+  { w: 1, re: /\b(?:e|ins)\s?-?62\d\b|monosodium glutamate|\bmsg\b|flavour enhancer/i, text: "Flavour enhancer (MSG)" },
+  { w: 1, re: /glucose syrup|fructose syrup|invert sugar|corn syrup|maltodextrin|dextrose/i, text: "Sugar in other forms" },
+  { w: 1, re: /\b(?:e|ins)\s?-?2\d{2}[a-z]?\b|preservative|sodium benzoate|potassium sorbate/i, text: "Preservative" },
+  { w: 1, re: /maida|refined wheat flour|refined flour/i, text: "Refined flour (maida)" }
 ];
+
+function ingScore(text) {
+  if (!text) return 0;
+  const s = FLAGS.filter(f => f.re.test(text)).reduce((a, f) => a + f.w, 0);
+  return Math.min(s, 3);
+}
 
 function flagsHtml(text) {
   if (!text) return "";
@@ -128,7 +153,7 @@ function manualCheck() {
   };
   const n = { sugars_100g: num("m_sugar"), "saturated-fat_100g": num("m_sat"), salt_100g: num("m_salt") };
   const ing = document.getElementById("m_ing").value;
-  document.getElementById("m_out").innerHTML = verdict(n, undefined) + flagsHtml(ing);
+  document.getElementById("m_out").innerHTML = verdict(n, undefined, ing) + flagsHtml(ing);
 }
     async function lookup(code) {
       const out = document.getElementById("result");
@@ -147,7 +172,7 @@ function manualCheck() {
           ? p.nutriscore_grade.toUpperCase() : "Not enough data";
         out.innerHTML = `
           <h3>${p.product_name || "Unknown"}</h3>
-          ${verdict(n, p.nova_group)}
+          ${verdict(n, p.nova_group, p.ingredients_text)}
           ${flagsHtml(p.ingredients_text)}
           <p><b>Nutri-Score:</b> ${ns}
              | <b>NOVA:</b> ${p.nova_group || "n/a"} (4 = ultra-processed)</p>
